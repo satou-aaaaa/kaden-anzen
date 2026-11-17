@@ -124,6 +124,7 @@ const ansIdx = (p) => p.evaluate(() => { const c = __km.cur(); return c.P.opts.i
 const wrongIdx = (p) => p.evaluate(() => { const c = __km.cur(); return c.P.opts.findIndex((o) => o !== c.P.ans && !c.wrong.includes(o)); });
 const mem = (p) => p.evaluate(() => JSON.parse(localStorage.getItem("kaden-v1") || "{}"));
 // 2段目「なぜあやしい？」が出たら、正しい分け方を押す（場面の問題には出ない）
+const say2 = (q) => q.evaluate(() => document.querySelectorAll(".ch[data-a11y-say]").length === 0 && !!document.querySelector("#ask[data-a11y-say]") && document.querySelectorAll(".why button[data-a11y-say]").length === 3);
 const why = async (p) => { await p.waitForSelector(".verdict, .why button"); if (await p.locator(".verdict").count()) return; await p.click(`.why button[data-g="${await p.evaluate(() => __km.cur().P.grp)}"]`); };
 async function solve(p, { wrong = 0 } = {}) {
   for (let i = 0; i < wrong; i++) await p.click(`.ch[data-j="${await wrongIdx(p)}"]`);
@@ -363,9 +364,11 @@ try {
     check("まちがえたその時に復習へ入る（解き終えずにやめても残る。2026-11-11 CodeRabbit）", await q.evaluate(() => { const d = JSON.parse(localStorage.getItem("kaden-depth") || "{}"); return !!(d.rv && d.rv[__km.cur().tag]); }));
     await q.click(`.ch[data-j="${await ansIdx(q)}"]`);
     check("広告の行を見抜くと、2段目「なぜあやしい？」が3つ出る（押せる所は44px以上）", await q.locator(".why button").count() === 3 && await q.locator(".verdict").count() === 0 && (await q.$$eval(".why button", (b) => b.every((x) => x.getBoundingClientRect().height >= 44))));
+    check("2段目へ進むと、読み上げは問いと3つの分け方だけ（4つの行は読まない。2026-11-17 CodeRabbit）", await say2(q));
     check("2段目の間は、広告の行は押せない", await q.evaluate(() => [...document.querySelectorAll(".ch")].every((b) => b.disabled)));
     await q.reload(); await q.waitForTimeout(150); await q.evaluate(() => __km.play("p"));
     check("2段目の途中で閉じても、2段目から続く", await q.locator(".why button").count() === 3);
+    check("途中から2段目を開き直しても、読み上げは問いと3つの分け方だけ（4つの行は読まない。2026-11-17 CodeRabbit）", await say2(q));
     const wg = await q.evaluate(() => Object.keys(__km.G.GROUPS).find((x) => x !== __km.cur().P.grp));
     await q.click(`.why button[data-g="${wg}"]`);
     check("2段目でまちがえると ✕ ちがう（破線）・もう一度選べる", await q.locator(".why button.ng").count() === 1 && (await q.textContent("#msg")).includes("✕"));
