@@ -433,11 +433,17 @@ function load() {
   for (const m of new Set([...Object.keys(ra), ...Object.keys(rb)])) {
     const x = ra[m], y = rb[m];
     if (x === undefined || y === undefined) { if (x || y) s.runs[m] = x || y; continue; }
-    if (!x || !y) { const r = x || y; if (!r || bank(s, r) || doneOf(r)) continue; const bd = bookOf(s, r.mode); if (!bd || !bd[r.date]) s.runs[m] = r; continue; }
+    if (!x || !y) { const r = x || y; if (!r || bank(s, r) || doneOf(r)) continue; if (n.runs[m] === null) continue; const bd = bookOf(s, r.mode); if (!bd || !bd[r.date]) s.runs[m] = r; continue; } // 新しい側で終えた（null）回は、古い側に残った同じ回で戻さない（保存に失敗したまま終えたとき。CodeRabbit kaden-anzen#1）
     if (x.id !== y.id && x.date !== y.date) { const [w, l] = x.date > y.date ? [x, y] : [y, x]; bank(s, l); s.runs[m] = w; }
-    else if (x.id === y.id) { const px = prog(x), py = prog(y); s.runs[m] = px > py ? x : py > px ? y : n.runs[m]; }
+    else if (x.id === y.id) { const px = prog(x), py = prog(y), w = px > py ? x : py > px ? y : n.runs[m]; s.runs[m] = mergeCur(w, w === x ? y : x); }
   }
   return tidy(s);
+}
+// 同じ回の同じ問題を2つの画面で進めていたら、ヒントは多い方・まちがいと2段目のまちがいは合わせた分・段は進んだ方を残す（keep と同じ合わせ方。CodeRabbit kaden-anzen#1）
+function mergeCur(w, l) {
+  if (!w || !l || !w.cur || !l.cur || (w.res || []).length !== (l.res || []).length || w.cur.i !== l.cur.i || w.cur.tag !== l.cur.tag) return w;
+  const a = w.cur, b = l.cur, uni = (p, q) => [...new Set([...(Array.isArray(p) ? p : []), ...(Array.isArray(q) ? q : [])])];
+  return Object.assign({}, w, { cur: Object.assign({}, a, { hints: Math.max(+a.hints || 0, +b.hints || 0), wrong: uni(a.wrong, b.wrong), step: Math.max(a.step || 1, b.step || 1), w2: uni(a.w2, b.w2), h2: a.h2 || b.h2 ? 1 : 0 }) });
 }
 // 引き継ぎコードなどから入った値を正しい形に直す（数の所に文字が入っていても画面に出さない）
 const num = (v) => (Number.isFinite(+v) && +v >= 0 ? Math.floor(+v) : 0);
@@ -506,7 +512,7 @@ const buzz = (n = 12) => { try { if (!(window.A11y && A11y.on("calm"))) navigato
 const esc = (t) => String(t).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 const toTop = () => window.scrollTo(0, 0);
 const srcHtml = (P) => `<p class="src">出典：${P.src.map(([n, u]) => `<a href="${esc(u)}" target="_blank" rel="noopener">${esc(n)}</a>`).join("・")}</p>`;
-const footer = () => `<footer><a href="#" id="f-how">遊び方</a><a href="#" id="f-about">このゲームについて</a><a href="#" data-a11y-open>見やすさ</a><a href="#" data-hk>引き継ぎ</a><a href="${FEEDBACK}" target="_blank" rel="noopener">感想を送る</a><a href="https://ko-fi.com/satouaaaaa" target="_blank" rel="noopener">Ko-fi で応援</a></footer>`;
+const footer = () => `<footer><a href="#" id="f-how">遊び方</a><a href="#" id="f-about">このゲームについて</a><a href="#" data-a11y-open>見やすさ</a><a href="#" data-hk>引き継ぎ</a><a href="${FEEDBACK}" target="_blank" rel="noopener">感想を送る</a></footer>`;
 function bindFooter() { const h = $("f-how"); if (h) h.onclick = (e) => { e.preventDefault(); openHow(); }; const a = $("f-about"); if (a) a.onclick = (e) => { e.preventDefault(); about(); }; }
 function openHow() { $("fb2").href = FEEDBACK; const d = $("howto"); if (d.showModal) d.showModal(); else d.setAttribute("open", ""); }
 $("howto").addEventListener("cancel", () => { if (!load().tut) save((s) => { s.tut = true; }); }); // Esc を押したその場で「見た」を残す（close の知らせは遅れて届き、すぐ読み直すと間に合わない）
@@ -653,10 +659,10 @@ const left2Of = () => GK.filter((x) => x !== cur.P.grp && !cur.w2.includes(x));
 const cut2Of = () => (cur.h2 ? left2Of().slice(0, 1) : []);
 function askWhy() {
   const P = cur.P;
-  document.querySelectorAll(".ch").forEach((b) => { b.disabled = true; if (P.opts[+b.dataset.j] === P.ans) { b.classList.remove("ng"); b.classList.add("ok"); } });
+  document.querySelectorAll(".ch").forEach((b) => { b.disabled = true; b.removeAttribute("data-a11y-say"); if (P.opts[+b.dataset.j] === P.ans) { b.classList.remove("ng"); b.classList.add("ok"); } }); // 2段目では、読み上げを問いと3つの分け方に切り替える
   $("msg").className = "msg"; $("msg").textContent = `✓ その行！ では、なぜ危ない？${cur.jd && cur.jd.text ? "　" + cur.jd.text : ""}`;
   if ($("ask")) $("ask").textContent = "なぜ危ない？";
-  $("why").innerHTML = `<div class="why" role="group" aria-label="なぜ危ないか">${GK.map((x) => `<button data-g="${x}"><b>${G.GROUPS[x].name}</b><small>${G.GROUPS[x].sub}</small></button>`).join("")}</div>`;
+  $("why").innerHTML = `<div class="why" role="group" aria-label="なぜ危ないか">${GK.map((x) => `<button data-g="${x}" data-a11y-say><b>${G.GROUPS[x].name}</b><small>${G.GROUPS[x].sub}</small></button>`).join("")}</div>`;
   document.querySelectorAll(".why button").forEach((b) => (b.onclick = () => chooseWhy(b.dataset.g)));
   paintWhy();
 }
@@ -864,7 +870,7 @@ function about() {
   $("back").onclick = home; bindFooter(); toTop();
 }
 
-window.__km = { randomTags, idsOf, mode: () => MODE, load, save, todayKey, dayNo, lateDays, ACH, achGot, nextAch, tally, shareText, streak, endlessList, moreList, ERAMP, TIPS, cur: () => cur, play: (m) => { if (m) MODE = m; play(); }, home, cal, book, about, EPOCH, KEY, G, start: startRun, setMore: (f) => { const o = moreHook; moreHook = f; return o; } };
+window.__km = { mergeCur, randomTags, idsOf, mode: () => MODE, load, save, todayKey, dayNo, lateDays, ACH, achGot, nextAch, tally, shareText, streak, endlessList, moreList, ERAMP, TIPS, cur: () => cur, play: (m) => { if (m) MODE = m; play(); }, home, cal, book, about, EPOCH, KEY, G, start: startRun, setMore: (f) => { const o = moreHook; moreHook = f; return o; } };
 home();
 if ("serviceWorker" in navigator && location.protocol === "https:" && /github\.io$/.test(location.hostname)) navigator.serviceWorker.register("sw.js").catch(() => {});
 </script>

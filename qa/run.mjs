@@ -238,6 +238,19 @@ try {
     await cx.close();
   }
   {
+    // 保存に失敗したまま「ここで降りる」で終えても、保存済みの同じ回が「続きから」で戻らない（CodeRabbit kaden-anzen#1）
+    const cx = await browser.newContext({ viewport: { width: 390, height: 800 } });
+    await cx.addInitScript(() => { const o = Storage.prototype.setItem; window.__block = false; Storage.prototype.setItem = function (k, v) { if (window.__block && k === "kaden-v1") throw new Error("full"); return o.call(this, k, v); }; });
+    const q = await newPage(390, cx); await closeHow(q); await q.click("#go-e"); await solve(q); await q.click("#next");
+    await q.evaluate(() => { window.__block = true; }); await q.click("#quit"); await q.waitForTimeout(150); await q.click("#back"); await q.waitForTimeout(150);
+    check("保存に失敗したまま終えたとことんは、ホームで「続きから」に戻らない", !(await q.textContent("#go-e")).includes("続きから") && !(await q.evaluate(() => __km.load().runs.e)));
+    // 同じ回の同じ問題を2つの画面で進めたら、ヒントは多い方・まちがいは合わせた分を残す
+    const mc = await q.evaluate(() => { const a = { id: "x", res: [], cur: { i: 0, tag: "bed|1", wrong: ["A"], hints: 0, step: 1, w2: [], h2: 0 } }, b = { id: "x", res: [], cur: { i: 0, tag: "bed|1", wrong: [], hints: 2, step: 2, w2: ["wire"], h2: 1 } }; return __km.mergeCur(a, b).cur; });
+    check("同じ問題の途中経過は項目ごとに合わせる（ヒントは多い方・まちがいは合わせた分・段は進んだ方）", mc.hints === 2 && mc.wrong.join() === "A" && mc.step === 2 && mc.w2.join() === "wire" && mc.h2 === 1, JSON.stringify(mc));
+    await cx.close();
+  }
+  check("Ko-fi のリンクはフッターに置かず、結果の画面の1行だけ（game-dev.md F5）", !/<footer>[^`]*ko-fi/.test(html));
+  {
     // とことんの並びを何百回作って、1回の中で同じ問題が無い・続けて同じ種類が無い・足しても重ならない
     const r = await p.evaluate(() => { const K = __km.G, bad = []; for (let n = 0; n < 300; n++) { const l = __km.endlessList(), more = l.concat(__km.moreList(l)); const ks = more.map((t) => K.keyOf(K.make(t))); if (new Set(ks).size !== ks.length) bad.push("重なり"); if (more.some((t, i) => i && t.split("|")[0] === more[i - 1].split("|")[0])) bad.push("同じ種類が続く"); if (l.length !== 60 || more.length !== 100) bad.push("数" + l.length + "/" + more.length); } return bad; });
     check("とことんの並び300回：60問＋足した40問で同じ問題も同じ種類の連続も無い（game-dev.md F6）", r.length === 0, r.slice(0, 3).join(","));
@@ -458,7 +471,7 @@ try {
   check("2段目「なぜあやしい？」の分け方：広告の種類は全部3つのどれか・場面の種類には無い", bad.length === 0 && Object.keys(G.GROUPS).length === 3 && Object.keys(G.GROUPS).every((g) => Object.values(G.GRP).includes(g)), bad.join(",")); }
 // 引き継ぎコード（shared-workflows template/qa/transfer-check.mjs）
 try {
-  const sample = { "kaden-v1": JSON.stringify({ v: 1, tut: true, days: { "2026-11-07": { m: [0, 1, 0, 0, 2], k: ["hot", "bed", "watt", "sos", "hijunsei"] } }, hdays: {}, adays: {}, dex: { hot: 1, bed: 1, watt: 1, sos: 1, hijunsei: 1 }, runs: {}, kofi: {}, ach: {}, ebest: 7, t: 1 }), "kaden-fs": "3" };
+  const sample = { "kaden-v1": JSON.stringify({ v: 1, tut: true, days: { "2026-11-07": { m: [0, 1, 0, 0, 2], k: ["hot", "bed", "watt", "sos", "hijunsei"] } }, hdays: {}, adays: {}, dex: { hot: 1, bed: 1, watt: 1, sos: 1, hijunsei: 1 }, runs: {}, kofi: {}, ach: {}, ebest: 7, t: 1 }), "kaden-fs": "3", "kaden-depth": JSON.stringify({ v: 1, rv: { "bed|2026-11-17:d0": { s: 1, due: "2026-11-20", t: 5, lab: "寝ている間の充電" } }, sure: 3, sureOk: 2, learned: 1 }) };
   await checkTransfer({ browser, url, game: "kaden-anzen", sample, check, open: async (pg) => { if (await pg.locator("#howto[open]").count()) await pg.click("#howto-ok"); } });
 } catch (e) { check("引き継ぎの検査が最後まで動く", false, e.message.split("\n")[0]); }
 await browser.close();
